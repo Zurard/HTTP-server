@@ -54,10 +54,10 @@ int main() {
 	printf("Waiting for a client to connect...\n");
 	client_addr_len = sizeof(client_addr);
 	
-	accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+	int id = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	printf("Client connected\n");
 	char* response = "HTTP/1.1 200 OK\r\n\r\n";
-	int response_status = send(server_fd, response, strlen(response), 0);
+	int response_status = send(id, response, strlen(response), 0);
 	printf("Response sent, status ================>> %d\n", response_status);
 	if (response_status == -1) {
 		printf("Send failed: %s \n", strerror(errno));
