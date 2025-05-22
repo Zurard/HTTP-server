@@ -55,19 +55,9 @@ int main() {
 	
 	accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	printf("Client connected\n");
-	if (accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len) == -1) {
-		printf("Accept failed: %s \n", strerror(errno));
-		return 1;
-	}
-	else{
-		printf("Client connected\n");
-		char* response = "HTTP/1.1 200 OK\r\n\r\n";
+	char* response = "HTTP/1.1 200 OK\r\n\r\n";
 
-	}
 
-	
-
-	
 	
 	close(server_fd);
 
