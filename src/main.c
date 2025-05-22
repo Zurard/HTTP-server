@@ -17,10 +17,11 @@ int main() {
 
 	// Uncomment this block to pass the first stage
 	//
-	int server_fd, client_addr_len;
+	int server_fd, client_addr_len; // server_fd is the socket file descriptor 
 	 struct sockaddr_in client_addr;
 	
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	printf("Socket created wit id =============>> %d\n", server_fd);
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
 		return 1;
@@ -57,7 +58,7 @@ int main() {
 	printf("Client connected\n");
 	char* response = "HTTP/1.1 200 OK\r\n\r\n";
 	int response_status = send(server_fd, response, strlen(response), 0);
-	
+	printf("Response sent, status ================>> %d\n", response_status);
 	if (response_status == -1) {
 		printf("Send failed: %s \n", strerror(errno));
 		return 1;
