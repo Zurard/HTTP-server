@@ -47,12 +47,15 @@ int main() {
 	}
 	
 	int connection_backlog = 5;
+	int listening_port = ntohs(serv_addr.sin_port);
+	printf("Server is listening on port %d\n", listening_port);
+	// Now we can start listening for incoming connections
 	if (listen(server_fd, connection_backlog) != 0) {
 		printf("Listen failed: %s \n", strerror(errno));
 		return 1;
 	}
 	
-	printf("Waiting for a client to connect...\n");
+	printf("==============>>Waiting for a client to connect...\n");
 	client_addr_len = sizeof(client_addr);
 	
    
@@ -62,86 +65,104 @@ int main() {
 	int client_port = ntohs(serv_addr.sin_port);
 
 	
-	printf("Client connected\n" ,
-		   "Client IP ================>> %s\n"
-		   "Client Port ================>> %d\n",
-		   client_ip, client_port);
+	printf("Client connected\n");
+	printf("Client IP: %s, Client Port: %d\n", client_ip, client_port);
 
 	//Client has been connected sucessfully now we try to understand and give a response based on that 
 	// URL Extraction 	   
 
-	char buffer[1024]; // buffer is of 1KB (due to mostly all headers fit inside it)
-    int request_recieved = read(client_fd,buffer,sizeof(buffer)-1);
-	buffer[request_recieved] = '\0'; 
+    char buffer[1024];
+    int request_received = read(client_fd, buffer, sizeof(buffer) - 1);
+    buffer[request_received] = '\0';
 
-    //this is the actual request : ------------>>
-	printf("the HTTP request is given as %s" , buffer);
+    printf("the HTTP request is given as %s", buffer);
 
-	/* -------this how the request looks like --------
-	GET /hello HTTP/1.1\r\nHost: localhost:8080\r\nUser-Agent: Mozilla/5.0\r\nAccept: */ /* \r\n\r\n 
-
-*/
     char method[16];
     char target[256];
     char version[32];
-    
-    int i = 0, j = 0;
+	char* response ;
 
-    // Parse Method
-    while (buffer[i] != ' ' && buffer[i] != '\0') {
-        method[j++] = buffer[i++];
-    }
-    method[j] = '\0';
-    i++; // skip space
-    j = 0;
+    // Find the first space
+    char* first_space = strchr(buffer, ' ');
+    int error  = 0;
 
-    // Parse Request Target
-    while (buffer[i] != ' ' && buffer[i] != '\0') {
-        target[j++] = buffer[i++];
+    if (first_space == NULL) {
+        // Handle error: invalid request line
+        response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
+		error = 1;
+        return 1; // Or handle differently
     }
-    target[j] = '\0';
-    i++; // skip space
-    j = 0;
 
-    // Parse HTTP Version
-    while (buffer[i] != '\r' && buffer[i] != '\0') {
-        version[j++] = buffer[i++];
+    // Extract method
+    int method_len = first_space - buffer;
+    if (method_len >= sizeof(method)) {
+        // Handle error: method too long
+         response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
+		error = 1;
+        return 1; // Or handle differently
     }
-    version[j] = '\0';
+    strncpy(method, buffer, method_len);
+    method[method_len] = '\0';
+
+    // Find the second space (after the first space)
+    char* second_space = strchr(first_space + 1, ' ');
+    if (second_space == NULL) {
+         // Handle error: invalid request line
+        response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
+		error =1;
+        return 1; // Or handle differently
+    }
+
+    // Extract target
+    int target_len = second_space - (first_space + 1);
+     if (target_len >= sizeof(target)) {
+        // Handle error: target too long
+         response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
+        error = 1;
+		return 1; // Or handle differently
+    }
+    strncpy(target, first_space + 1, target_len);
+    target[target_len] = '\0';
+
+    // Find the carriage return (after the second space)
+    char* crlf = strstr(second_space + 1, "\r\n");
+     if (crlf == NULL) {
+         // Handle error: invalid request line or missing CRLF
+        response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
+		error = 1;
+        return 1; // Or handle differently
+    }
+
+    // Extract version
+    int version_len = crlf - (second_space + 1);
+    if (version_len >= sizeof(version)) {
+        // Handle error: version too long
+         response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
+		error = 1;
+        return 1; // Or handle differently
+    }
+    strncpy(version, second_space + 1, version_len);
+    version[version_len] = '\0';
 	
+	if (error == 0 ){
+		// Send a simple HTTP response
+		response = "HTTP/1.1 200 OK\r\n";
+		send(client_fd, response, strlen(response), 0);
+		return 1;
+	}
 	// now we have the method, target, and version parsed 
 	printf("Parsed Method: %s\n", method);
 	printf("Parsed Target: %s\n", target);
 	printf("Parsed Version: %s\n", version);
+	memset(buffer, 0, sizeof(buffer));
 
-	// Now we can send a response back to the client
-	char* response ;
-	if(!method || !target || !version) {
-		response = "HTTP/1.1 400 NOT FOUND\r\n\r\n";
-		int response_status = send(client_fd, response, strlen(response), 0);
-		printf("Response sent, status ================>> %d\n", response_status);
-		if (response_status == -1) {
-			printf("Send failed: %s \n", strerror(errno));
-			return 1;
-		}
-		return 1;
-	}
-	else {
-		response = "HTTP/1.1 200 OK\r\n\r\n";
-		int response_status = send(client_fd, response, strlen(response), 0);
-		printf("Response sent, status ================>> %d\n", response_status);
-	}
-
-
-	char* response = "HTTP/1.1 200 OK\r\n\r\n";
-	int response_status = send(client_fd, response, strlen(response), 0);
-	printf("Response sent, status ================>> %d\n", response_status);
-	if (response_status == -1) {
-		printf("Send failed: %s \n", strerror(errno));
-		return 1;
-	}
-	
-	close(server_fd);
+	// close(server_fd);
 
 	 return 0;
 }
