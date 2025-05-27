@@ -85,6 +85,10 @@ int main() {
 	//User-Agent: curl/7.64.1\r\n
 	//Accept: */*\r\n\r\n
 
+
+	//----------this the response for the above request ---------------------
+	//HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nabc
+
     char method[16];
     char target[256];
     char version[32];
@@ -127,16 +131,41 @@ int main() {
 
     // Extract target
     int target_len = second_space - (first_space + 1);
-     if (target_len >= sizeof(target)) {
+     if (target_len >= sizeof(target))  // invalid request line
+	 {
         // Handle error: target too long
          response = "HTTP/1.1 400 Bad Request\r\n\r\n";
         send(client_fd, response, strlen(response), 0);
         error = 1;
-		return 1; // Or handle differently
+		return 1; 
     }
-    strncpy(target, first_space + 1, target_len);
-    target[target_len] = '\0';
+	else 
+	{
+		strncpy(target, first_space + 1, target_len);
+		target[target_len] = '\0';
 
+		// extracting the string after /echo/
+		char* echo_pos = strstr(target, "/echo/");
+		if (echo_pos != NULL) {
+			char*echo_str = echo_pos + strlen("/echo/");
+			
+				// Extracted the echo string 
+				printf("Extracted echo string: %s\n", echo_str);
+				if ( *echo_str != '\0'){
+
+				//Prepare the response accordingly 
+				int echo_str_len = strlen(echo_str);
+            
+				// example of a response jsut while coding this shit
+				//--HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nabc--
+				char response_echo[2048];
+                snprintf(response_echo, sizeof(response_echo), "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", echo_str_len, echo_str);			
+				send(client_fd, response_echo, strlen(response_echo), 0);
+				return 0; 
+			}
+		}
+	}
+    
     // Find the carriage return (after the second space)
     char* crlf = strstr(second_space + 1, "\r\n");
      if (crlf == NULL) {
