@@ -77,9 +77,18 @@ int main() {
 
     printf("the HTTP request is given as %s", buffer);
 
+
+	// ------------------example of a HTTP request with /echo/{str} as an endpoint ------------------
+	// GET /echo/abc 
+	//HTTP/1.1\r\n
+	//Host: localhost:4221\r\n
+	//User-Agent: curl/7.64.1\r\n
+	//Accept: */*\r\n\r\n
+
     char method[16];
     char target[256];
     char version[32];
+	char echo_str[1024];
 	char* response ;
 
     // Find the first space
