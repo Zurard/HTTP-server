@@ -35,7 +35,8 @@ void *handle_client(void *arg) {
 
   char header[1024];
   char host[256];
-  char user_agent_val[256]; // Renamed to avoid confusion with function
+  char encrytion[256]; // if encryption is there in the request
+  char user_agent_val[256]; // if user-agent is there in the request
   char content_type[256];   // if content-type is there in the request
   char content_length_str[256]; // if content-length is there in the request
                                 // (string representation)
@@ -196,10 +197,57 @@ void *handle_client(void *arg) {
        
         char response_echo[2048];
          if (strstr(header, "Accept-Encoding")) {
+           // now we need to extract all the encoding methods from the header
+          char *encoding_start = strstr(header, "Accept-Encoding: ");
+          if (encoding_start != NULL)
+            {
+              encoding_start += 17; // Move past "Accept-Encoding: "
+              char *encoding_end = NULL;
+              // now we will need to find the immediate CRLF after the encoding values 
+              for(char *p = encoding_start; *p != '\0'; ++p) {
+                if (p[0] == '\\' && p[1] == 'r' && p[2] == '\\' && p[3] == 'n') { // Corrected CRLF detection
+                  encoding_end = p;
+                  break;
+                }
+              }
+              if (encoding_end)
+              {
+                int encoding_len = encoding_end - encoding_start;
+                if (encoding_len >= sizeof(encrytion)) {
+                  printf("Encoding length: %d, Max allowed: %zu\n", encoding_len,
+                         sizeof(encrytion));
+                  response = "HTTP/1.1 400 Bad Request\r\n\r\n--- due to "
+                             "encoding too long ---";
+                  send(client_fd, response, strlen(response), 0);
+                  error = 1;
+                  close(client_fd);
+                  pthread_exit(NULL);
+                  return NULL;
+                } else {
+                  strncpy(encrytion, encoding_start, encoding_len);
+                  encrytion[encoding_len] = '\0';
+                  printf("Parsed Accept-Encoding: %s\n", encrytion);
+                  // now check if gzip is there in the encoding 
+                  if (strstr(encrytion,"gzip")!=NULL)
+                  {
+                    snprintf(response_echo, sizeof(response_echo),
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: text/plain\r\n"
+                    "Content-Encoding: gzip\r\n"
+                    "Content-Length: %d\r\n\r\n%s", // Removed trailing \r\n here, as it's
+                                                  // not part of content
+                          echo_str_len, echo_str_ptr);
+                    send(client_fd, response_echo, strlen(response_echo), 0);
+                    close(client_fd);
+                    pthread_exit(NULL);
+                    return NULL;
+                  }
+                }
+              }
+            }
            snprintf(response_echo, sizeof(response_echo),
            "HTTP/1.1 200 OK\r\n"
            "Content-Type: text/plain\r\n"
-           "Content-Encoding: gzip\r\n"
           "Content-Length: %d\r\n\r\n%s", // Removed trailing \r\n here, as it's
                                         // not part of content
                  echo_str_len, echo_str_ptr);
