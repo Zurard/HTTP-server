@@ -193,10 +193,24 @@ void *handle_client(void *arg) {
         // example of a response jsut while coding this shit
         //--HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length:
         // 3\r\n\r\nabc--
+       
         char response_echo[2048];
+         if (strstr(header, "Accept-Encoding")) {
+           snprintf(response_echo, sizeof(response_echo),
+           "HTTP/1.1 200 OK\r\n"
+           "Content-Type: text/plain\r\n"
+           "Content-Encoding: gzip\r\n"
+          "Content-Length: %d\r\n\r\n%s", // Removed trailing \r\n here, as it's
+                                        // not part of content
+                 echo_str_len, echo_str_ptr);
+           send(client_fd, response_echo, strlen(response_echo), 0);
+          close(client_fd);
+          pthread_exit(NULL);
+          return NULL;
+        }
+       
         snprintf(response_echo, sizeof(response_echo),
-                 "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-"
-                 "Length: %d\r\n\r\n%s", // Removed trailing \r\n here, as it's
+                 "Content-Length: %d\r\n\r\n%s", // Removed trailing \r\n here, as it's
                                         // not part of content
                  echo_str_len, echo_str_ptr);
         send(client_fd, response_echo, strlen(response_echo), 0);
