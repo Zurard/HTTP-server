@@ -9,7 +9,235 @@
 #include <errno.h>
 #include <pthread.h> //  to handle multiple clients who are trying to connect to the server
 
+#define WINDOW_SIZE 6
+#define BUFFER_SIZE 1024
+#define MAX_TREE_HEIGHT 256 
+
+// Huffman coding requires a priority queue, so we define the Node and MinHeap structures
+typedef struct Node {
+    char data;
+    unsigned freq;
+    struct Node *left, *right;
+} Node;
+
+typedef struct MinHeap {
+    unsigned size;
+    unsigned capacity;
+    Node** array;
+} MinHeap;
+
+
 char *directory = NULL; // global directory variable
+
+char* LZ77(const char* data);
+char* huffman_encode(const char* data);
+
+
+// function to convert any string to gzip format
+// we will use LZ77(Sliding Window) compression algorithm to compress the string and Hoffman coding to encode the compressed data
+char* convertGzip(const char *input)
+{
+  char* compressed_data = LZ77(input);
+  if (compressed_data == NULL) {
+    printf("LZ77 compression failed.\n");
+    return NULL;
+  }
+  else {
+    char* encoded_data = huffman_encode(compressed_data);
+    if (encoded_data == NULL) {
+      printf("Huffman encoding failed.\n");
+      free(compressed_data);
+      return NULL;
+    }
+    else {
+      free(compressed_data); // Free the compressed data after encoding
+      return encoded_data; // Return the Huffman encoded data
+    }
+  }
+
+}
+
+char* LZ77(const char* data) {
+    int data_len = strlen(data);
+    char sliding_window[WINDOW_SIZE + 1] = "";  // +1 for null terminator
+    char compressed_data[BUFFER_SIZE] = "";
+    char pair[50];
+    int compressed_len = 0;
+
+    for (int i = 0; i < data_len; i++) {
+        char current = data[i];
+        char* match = strchr(sliding_window, current);
+
+        if (match != NULL) {
+            int position = match - sliding_window;
+            int length = 1;  // for simplicity
+            sprintf(pair, "(%d,%d)", position, length);
+            strcat(compressed_data, pair);
+
+            // Append the literal
+            char literal[2] = {current, '\0'};
+            strcat(compressed_data, literal);
+        } else {
+            // No match — literal only
+            char literal[2] = {current, '\0'};
+            strcat(compressed_data, literal);
+        }
+
+        // Update sliding window
+        int win_len = strlen(sliding_window);
+        if (win_len < WINDOW_SIZE) {
+            sliding_window[win_len] = current;
+            sliding_window[win_len + 1] = '\0';
+        } else {
+            // Remove first character, shift left
+            memmove(sliding_window, sliding_window + 1, WINDOW_SIZE - 1);
+            sliding_window[WINDOW_SIZE - 1] = current;
+            sliding_window[WINDOW_SIZE] = '\0';
+        }
+    }
+
+    // Copy compressed data into heap memory to return
+    char* result = (char*)malloc(strlen(compressed_data) + 1);
+    strcpy(result, compressed_data);
+    return result;
+}
+
+Node* newNode(char data, unsigned freq) {
+    Node* temp = (Node*)malloc(sizeof(Node));
+    temp->left = temp->right = NULL;
+    temp->data = data;
+    temp->freq = freq;
+    return temp;
+}
+
+// Create MinHeap
+MinHeap* createMinHeap(unsigned capacity) {
+    MinHeap* minHeap = (MinHeap*)malloc(sizeof(MinHeap));
+    minHeap->size = 0;
+    minHeap->capacity = capacity;
+    minHeap->array = (Node**)malloc(minHeap->capacity * sizeof(Node*));
+    return minHeap;
+}
+
+// Swap two min heap nodes
+void swapNode(Node** a, Node** b) {
+    Node* t = *a;
+    *a = *b;
+    *b = t;
+}
+
+// Heapify
+void minHeapify(MinHeap* minHeap, int idx) {
+    int smallest = idx;
+    int left = 2 * idx + 1;
+    int right = 2 * idx + 2;
+
+    if (left < minHeap->size && minHeap->array[left]->freq < minHeap->array[smallest]->freq)
+        smallest = left;
+
+    if (right < minHeap->size && minHeap->array[right]->freq < minHeap->array[smallest]->freq)
+        smallest = right;
+
+    if (smallest != idx) {
+        swapNode(&minHeap->array[smallest], &minHeap->array[idx]);
+        minHeapify(minHeap, smallest);
+    }
+}
+
+// Build MinHeap
+void buildMinHeap(MinHeap* minHeap) {
+    int n = minHeap->size - 1;
+    for (int i = (n - 1) / 2; i >= 0; i--)
+        minHeapify(minHeap, i);
+}
+
+// Insert into MinHeap
+void insertMinHeap(MinHeap* minHeap, Node* node) {
+    ++minHeap->size;
+    int i = minHeap->size - 1;
+
+    while (i && node->freq < minHeap->array[(i - 1) / 2]->freq) {
+        minHeap->array[i] = minHeap->array[(i - 1) / 2];
+        i = (i - 1) / 2;
+    }
+    minHeap->array[i] = node;
+}
+
+// Extract minimum value node from MinHeap
+Node* extractMin(MinHeap* minHeap) {
+    Node* temp = minHeap->array[0];
+    minHeap->array[0] = minHeap->array[minHeap->size - 1];
+    --minHeap->size;
+    minHeapify(minHeap, 0);
+    return temp;
+}
+
+// Traverse the Huffman Tree and store codes in array
+void storeCodes(Node* root, char* code, int top, char codes[256][MAX_TREE_HEIGHT]) {
+    if (root->left) {
+        code[top] = '0';
+        storeCodes(root->left, code, top + 1, codes);
+    }
+    if (root->right) {
+        code[top] = '1';
+        storeCodes(root->right, code, top + 1, codes);
+    }
+    if (!(root->left) && !(root->right)) {
+        code[top] = '\0';
+        strcpy(codes[(unsigned char)root->data], code);
+    }
+}
+
+// Build Huffman Tree from frequencies
+Node* buildHuffmanTree(const char *data, unsigned freq[256]) {
+    MinHeap* minHeap = createMinHeap(256);
+
+    for (int i = 0; i < 256; i++)
+        if (freq[i])
+            insertMinHeap(minHeap, newNode(i, freq[i]));
+
+    buildMinHeap(minHeap);
+
+    while (minHeap->size != 1) {
+        Node* left = extractMin(minHeap);
+        Node* right = extractMin(minHeap);
+
+        Node* top = newNode('$', left->freq + right->freq);
+        top->left = left;
+        top->right = right;
+
+        insertMinHeap(minHeap, top);
+    }
+    return extractMin(minHeap);
+}
+
+// Huffman Encode Function
+char* huffman_encode(const char *data) {
+    unsigned freq[256] = {0};
+    int data_len = strlen(data);
+
+    // Count frequencies
+    for (int i = 0; i < data_len; i++)
+        freq[(unsigned char)data[i]]++;
+
+    // Build Huffman Tree
+    Node* root = buildHuffmanTree(data, freq);
+
+    // Generate codes
+    char codes[256][MAX_TREE_HEIGHT];
+    char code[MAX_TREE_HEIGHT];
+    storeCodes(root, code, 0, codes);
+
+    // Encode data
+    char *encoded_data = (char*)malloc(data_len * MAX_TREE_HEIGHT);
+    encoded_data[0] = '\0';
+    for (int i = 0; i < data_len; i++)
+        strcat(encoded_data, codes[(unsigned char)data[i]]);
+
+    return encoded_data;
+}
+
+
 // function to handle multiple clients
 void *handle_client(void *arg) {
   int client_fd = *(int *)arg;
@@ -230,13 +458,17 @@ void *handle_client(void *arg) {
                   // now check if gzip is there in the encoding 
                   if (strstr(encrytion,"gzip")!=NULL)
                   {
+                    // if gzip is there in the encoding then we need to compress the echo string
+                    char *gzip_echo_str = convertGzip(echo_str_ptr);
+                    printf("Gzip Echo String: %s\n", gzip_echo_str);
+                    int len_gzip_echo_str = strlen(gzip_echo_str);
                     snprintf(response_echo, sizeof(response_echo),
                     "HTTP/1.1 200 OK\r\n"
                     "Content-Type: text/plain\r\n"
                     "Content-Encoding: gzip\r\n"
                     "Content-Length: %d\r\n\r\n%s", // Removed trailing \r\n here, as it's
                                                   // not part of content
-                          echo_str_len, echo_str_ptr);
+                          len_gzip_echo_str, gzip_echo_str);
                     send(client_fd, response_echo, strlen(response_echo), 0);
                     close(client_fd);
                     pthread_exit(NULL);
